@@ -1,0 +1,16 @@
+diff --git a/modules/warmer_cdn/src/Plugin/warmer/CdnWarmer.php b/modules/warmer_cdn/src/Plugin/warmer/CdnWarmer.php
+index a4201318..66c9b2ed 100644
+--- a/modules/warmer_cdn/src/Plugin/warmer/CdnWarmer.php
++++ b/modules/warmer_cdn/src/Plugin/warmer/CdnWarmer.php
+@@ -85,7 +85,10 @@ public function warmMultiple(array $items = []) {
+    */
+   private function parseHeaders() {
+     $configuration = $this->getConfiguration();
+-    $header_lines = $configuration['headers'];
++    $header_lines = [];
++    if (key_exists('headers', $configuration)) {
++      $header_lines = $configuration['headers'];
++    }
+     // Parse headers.
+     return array_reduce($header_lines, function ($carry, $header_line) {
+       list($name, $value_line) = array_map('trim', explode(':', $header_line));

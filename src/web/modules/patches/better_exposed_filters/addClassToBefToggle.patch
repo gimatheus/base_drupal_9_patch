@@ -1,0 +1,13 @@
+diff --git a/js/bef_select_all_none.js b/js/bef_select_all_none.js
+index 30d6313..09950f9 100644
+--- a/js/bef_select_all_none.js
++++ b/js/bef_select_all_none.js
+@@ -15,7 +15,7 @@
+         var selNone = Drupal.t('Select None');
+ 
+         // Set up a prototype link and event handlers
+-        var link = $('<a class="bef-toggle" href="#">' + selAll + '</a>')
++        var link = $('<a class="bef-toggle gp-button" href="#">' + selAll + '</a>')
+         link.click(function (event) {
+           // Don't actually follow the link...
+           event.preventDefault();

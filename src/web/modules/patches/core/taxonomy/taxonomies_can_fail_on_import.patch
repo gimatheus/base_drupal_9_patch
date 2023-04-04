@@ -1,0 +1,18 @@
+diff --git a/core/modules/taxonomy/taxonomy.module b/core/modules/taxonomy/taxonomy.module
+index f027bb462d..8399f30edc 100644
+--- a/core/modules/taxonomy/taxonomy.module
++++ b/core/modules/taxonomy/taxonomy.module
+@@ -342,7 +342,13 @@ function taxonomy_build_node_index($node) {
+         foreach ($tid_info as $langcode => $tid) {
++         // Adjust the created time if it isn't formatted properly.
++         $created = $node->getCreatedTime();
++         if (!is_numeric($created)) {
++           $timestamp = new \DateTime($created);
++           $created = $timestamp->getTimestamp();
++         }
+           $connection->merge('taxonomy_index')
+             ->key(['nid' => $node->id(), 'tid' => $tid, 'status' => $node->isPublished(), 'langcode' => $langcode])
+-            ->fields(['sticky' => $sticky, 'created' => $node->getCreatedTime()])
++            ->fields(['sticky' => $sticky, 'created' => $created])
+             ->execute();
+         }

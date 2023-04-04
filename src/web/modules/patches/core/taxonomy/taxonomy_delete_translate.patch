@@ -1,0 +1,270 @@
+diff --git a/core/modules/taxonomy/src/TermStorageSchema.php b/core/modules/taxonomy/src/TermStorageSchema.php
+index 0aa097b..c782a2a 100644
+--- a/core/modules/taxonomy/src/TermStorageSchema.php
++++ b/core/modules/taxonomy/src/TermStorageSchema.php
+@@ -60,8 +60,15 @@ protected function getEntitySchema(ContentEntityTypeInterface $entity_type, $res
+           'not null' => TRUE,
+           'default' => 0,
+         ],
++        'langcode' => [
++          'description' => 'The langcode of the node or translation.',
++          'type' => 'varchar_ascii',
++          'length' => 12,
++          'not null' => TRUE,
++          'default' => '',
++        ],
+       ],
+-      'primary key' => ['nid', 'tid'],
++      'primary key' => ['nid', 'tid', 'langcode'],
+       'indexes' => [
+         'term_node' => ['tid', 'status', 'sticky', 'created'],
+       ],
+diff --git a/core/modules/taxonomy/src/TermViewsData.php b/core/modules/taxonomy/src/TermViewsData.php
+index 7ea6758..ec3c538 100644
+--- a/core/modules/taxonomy/src/TermViewsData.php
++++ b/core/modules/taxonomy/src/TermViewsData.php
+@@ -212,6 +212,17 @@ public function getViewsData() {
+       ],
+     ];
+
++    $data['taxonomy_index']['langcode'] = [
++      'title' => $this->t('Node language'),
++      'help' => $this->t('The langcode of the node.'),
++      'filter' => [
++        'id' => 'language',
++      ],
++      'sort' => [
++        'id' => 'standard',
++      ],
++    ];
++
+     $data['taxonomy_index']['created'] = [
+       'title' => $this->t('Post date'),
+       'help' => $this->t('The date the content related to a term was posted.'),
+diff --git a/core/modules/taxonomy/taxonomy.install b/core/modules/taxonomy/taxonomy.install
+index b03fda2..eaeb84e 100644
+--- a/core/modules/taxonomy/taxonomy.install
++++ b/core/modules/taxonomy/taxonomy.install
+@@ -5,9 +5,110 @@
+  * Install, update and uninstall functions for the taxonomy module.
+  */
+
++use Drupal\Core\Database\Database;
++
+ /**
+  * Implements hook_update_last_removed().
+  */
+ function taxonomy_update_last_removed() {
+   return 8702;
+ }
++
++/**
++ * Add 'langcode' field to 'taxonomy_index' entities.
++ *
++ * Content needs to be updated.
++ */
++function taxonomy_update_9201() {
++  if (!Database::getConnection()->schema()->fieldExists('taxonomy_index', 'langcode')) {
++    Database::getConnection()
++      ->schema()
++      ->addField('taxonomy_index', 'langcode', [
++        'description' => 'The langcode of the node.',
++        'type' => 'varchar_ascii',
++        'length' => 12,
++        'not null' => TRUE,
++        'default' => '',
++      ]);
++
++    Database::getConnection()->schema()->dropPrimaryKey('taxonomy_index');
++    Database::getConnection()->schema()->addPrimaryKey(
++      'taxonomy_index',
++      ['nid', 'tid', 'langcode']
++    );
++  }
++
++  // Recreate the index to be sure it has the correct configuration.
++  if (Database::getConnection()->schema()->indexExists('taxonomy_index', 'term_node')) {
++    Database::getConnection()->schema()->dropIndex('taxonomy_index', 'term_node');
++  }
++
++  Database::getConnection()->schema()->addIndex(
++    'taxonomy_index',
++    'term_node',
++    ['tid', 'status', 'sticky', 'created', 'langcode'],
++    [
++      'description' => 'Maintains denormalized information about node/term relationships.',
++      'fields' => [
++        'nid' => [
++          'description' => 'The {node}.nid this record tracks.',
++          'type' => 'int',
++          'unsigned' => TRUE,
++          'not null' => TRUE,
++          'default' => 0,
++        ],
++        'tid' => [
++          'description' => 'The term ID.',
++          'type' => 'int',
++          'unsigned' => TRUE,
++          'not null' => TRUE,
++          'default' => 0,
++        ],
++        'status' => [
++          'description' => 'Boolean indicating whether the node is published (visible to non-administrators).',
++          'type' => 'int',
++          'not null' => TRUE,
++          'default' => 1,
++        ],
++        'sticky' => [
++          'description' => 'Boolean indicating whether the node is sticky.',
++          'type' => 'int',
++          'not null' => FALSE,
++          'default' => 0,
++          'size' => 'tiny',
++        ],
++        'created' => [
++          'description' => 'The Unix timestamp when the node was created.',
++          'type' => 'int',
++          'not null' => TRUE,
++          'default' => 0,
++        ],
++        'langcode' => [
++          'description' => 'The langcode of the node.',
++          'type' => 'varchar_ascii',
++          'length' => 12,
++          'not null' => TRUE,
++        ],
++      ],
++      'primary key' => ['nid', 'tid', 'langcode'],
++      'indexes' => [
++        'term_node' => ['tid', 'status', 'sticky', 'created', 'langcode'],
++      ],
++      'foreign keys' => [
++        'tracked_node' => [
++          'table' => 'node',
++          'columns' => ['nid' => 'nid'],
++        ],
++        'term' => [
++          'table' => 'taxonomy_term_data',
++          'columns' => ['tid' => 'tid'],
++        ],
++      ],
++    ]
++  );
++
++  // See https://www.drupal.org/node/3034742.
++  $definition_update_manager = \Drupal::entityDefinitionUpdateManager();
++  $entity_type = $definition_update_manager->getEntityType('taxonomy_term');
++  $definition_update_manager->updateEntityType($entity_type);
++}
+diff --git a/core/modules/taxonomy/taxonomy.module b/core/modules/taxonomy/taxonomy.module
+index 52e7e69..70aef39 100644
+--- a/core/modules/taxonomy/taxonomy.module
++++ b/core/modules/taxonomy/taxonomy.module
+@@ -329,7 +329,7 @@ function taxonomy_build_node_index($node) {
+         foreach ($node->getTranslationLanguages() as $language) {
+           foreach ($node->getTranslation($language->getId())->$field_name as $item) {
+             if (!$item->isEmpty()) {
+-              $tid_all[$item->target_id] = $item->target_id;
++              $tid_all[$item->target_id][$language->getId()] = $item->target_id;
+             }
+           }
+         }
+@@ -338,11 +338,13 @@ function taxonomy_build_node_index($node) {
+     // Insert index entries for all the node's terms.
+     if (!empty($tid_all)) {
+       $connection = \Drupal::database();
+-      foreach ($tid_all as $tid) {
+-        $connection->merge('taxonomy_index')
+-          ->key(['nid' => $node->id(), 'tid' => $tid, 'status' => $node->isPublished()])
+-          ->fields(['sticky' => $sticky, 'created' => $node->getCreatedTime()])
+-          ->execute();
++      foreach ($tid_all as $tid_info) {
++        foreach ($tid_info as $langcode => $tid) {
++          $connection->merge('taxonomy_index')
++            ->key(['nid' => $node->id(), 'tid' => $tid, 'status' => $node->isPublished(), 'langcode' => $langcode])
++            ->fields(['sticky' => $sticky, 'created' => $node->getCreatedTime()])
++            ->execute();
++        }
+       }
+     }
+   }
+@@ -377,6 +379,9 @@ function taxonomy_node_predelete(EntityInterface $node) {
+  */
+ function taxonomy_delete_node_index(EntityInterface $node) {
+   if (\Drupal::config('taxonomy.settings')->get('maintain_index_table')) {
++    // Since taxonomy_node_update() will handle the deletions of specific
++    // translations, we only need to handle the case where the whole node is
++    // deleted.
+     \Drupal::database()->delete('taxonomy_index')->condition('nid', $node->id())->execute();
+   }
+ }
+diff --git a/core/modules/taxonomy/taxonomy.post_update.php b/core/modules/taxonomy/taxonomy.post_update.php
+index f261092..3d3736f 100644
+--- a/core/modules/taxonomy/taxonomy.post_update.php
++++ b/core/modules/taxonomy/taxonomy.post_update.php
+@@ -5,6 +5,8 @@
+  * Post update functions for Taxonomy.
+  */
+
++use Drupal\Core\Site\Settings;
++
+ /**
+  * Implements hook_removed_post_updates().
+  */
+@@ -20,6 +22,57 @@ function taxonomy_removed_post_updates() {
+ }
+
+ /**
++ * Populate taxonomy index new langcode column.
++ */
++function taxonomy_post_update_populate_taxonomy_index_langcode(&$sandbox = NULL) {
++  /** @var \Drupal\node\NodeStorageInterface $node_storage */
++  $node_storage = \Drupal::entityTypeManager()->getStorage('node');
++  $database = \Drupal::database();
++
++  if (!isset($sandbox['max'])) {
++    $sandbox['max'] = $database->select('taxonomy_index')
++      ->fields('taxonomy_index', ['nid'])
++      ->distinct()
++      ->countQuery()
++      ->execute()
++      ->fetchField();
++    $sandbox['progress'] = 0;
++    $sandbox['limit'] = Settings::get('entity_update_batch_size', 50);
++
++    // Handle the case of 0 node to process.
++    if ($sandbox['max'] == 0) {
++      $sandbox['#finished'] = 1;
++      return;
++    }
++  }
++
++  // Retrieve the next group.
++  $entity_ids = $database->select('taxonomy_index')
++    ->fields('taxonomy_index', ['nid'])
++    ->orderBy('nid')
++    ->distinct()
++    ->range($sandbox['progress'], $sandbox['limit'])
++    ->execute()
++    ->fetchCol();
++  $nodes = $node_storage->loadMultiple($entity_ids);
++
++  foreach ($nodes as $node) {
++    taxonomy_delete_node_index($node);
++    taxonomy_build_node_index($node);
++
++    // Update our progress information.
++    $sandbox['progress']++;
++  }
++
++  if ($sandbox['progress'] != $sandbox['max']) {
++    $sandbox['#finished'] = ($sandbox['progress'] >= $sandbox['max']);
++  }
++  else {
++    $sandbox['#finished'] = 1;
++  }
++}
++
++/**
+  * Clear the cache after deprecating Term views argument validator.
+  */

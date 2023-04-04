@@ -1,0 +1,22 @@
+diff --git a/modules/contrib/xmlsitemap/xmlsitemap.module b/modules/contrib/xmlsitemap/xmlsitemap.module
+index 1eb15b1..15b46b4 100644
+--- a/modules/contrib/xmlsitemap/xmlsitemap.module
++++ b/modules/contrib/xmlsitemap/xmlsitemap.module
+@@ -217,6 +217,8 @@ function xmlsitemap_modules_uninstalled(array $modules) {
+ /**
+  * Implements hook_robotstxt().
+  */
++/*
++ * Commented code through a custom patch, to avoid this behaviour.
+ function xmlsitemap_robotstxt() {
+   if ($sitemap = XmlSitemap::loadByContext()) {
+     $uri = xmlsitemap_sitemap_uri($sitemap);
+@@ -224,7 +226,7 @@ function xmlsitemap_robotstxt() {
+     $robotstxt[] = 'Sitemap: ' . Url::fromUri($path, $uri['options'])->toString();
+     return $robotstxt;
+   }
+-}
++}*/
+
+ /**
+  * Internal default variables config for xmlsitemap_var().

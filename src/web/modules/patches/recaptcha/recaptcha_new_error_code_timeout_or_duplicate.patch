@@ -1,0 +1,22 @@
+diff --git a/recaptcha.module b/recaptcha/recaptcha.module
+index 2e2f86bda..78a8ede1a 100644
+--- a/recaptcha/recaptcha.module
++++ b/recaptcha/recaptcha.module
+@@ -145,12 +145,17 @@ function recaptcha_captcha($op, $captcha_type = '') {
+  */
+ function recaptcha_captcha_validation($solution, $response, $element, $form_state) {
+   $config = \Drupal::config('recaptcha.settings');
++  static $verified = [];
+ 
+   $recaptcha_secret_key = $config->get('secret_key');
+   if (empty($_POST['g-recaptcha-response']) || empty($recaptcha_secret_key)) {
+     return FALSE;
+   }
+ 
++  if (!empty($verified[$_POST['g-recaptcha-response']])) {
++    return TRUE;
++  }
++
+   // Use Drupal::httpClient() to circumvent all issues with the Google library.
+   $recaptcha = new ReCaptcha($recaptcha_secret_key, new Drupal8Post());
+ 

@@ -1,0 +1,30 @@
+diff --git a/core/modules/image/src/Entity/ImageStyle.php b/core/modules/image/src/Entity/ImageStyle.php
+index 39e7263fca..b996446ca8 100644
+--- a/core/modules/image/src/Entity/ImageStyle.php
++++ b/core/modules/image/src/Entity/ImageStyle.php
+@@ -273,9 +273,25 @@ public function flush($path = NULL) {
+           // Ignore failed deletes.
+         }
+       }
++
++      ///Flush WebP file
++      $only_file_name = pathinfo($path);
++      $webp_file = $only_file_name['dirname'] . '/' . $only_file_name['filename'] . '.webp';
++      if (isset($webp_file)) {
++        $webp_uri = $this->buildUri($webp_file);
++        if (file_exists($webp_uri)) {
++          try {
++            $file_system->delete($webp_uri);
++          } catch (FileException $e) {
++            // Ignore failed deletes.
++          }
++        }
++      }
++
+       return $this;
+     }
+ 
++
+     // Delete the style directory in each registered wrapper.
+     $wrappers = $this->getStreamWrapperManager()->getWrappers(StreamWrapperInterface::WRITE_VISIBLE);
+     foreach ($wrappers as $wrapper => $wrapper_data) {

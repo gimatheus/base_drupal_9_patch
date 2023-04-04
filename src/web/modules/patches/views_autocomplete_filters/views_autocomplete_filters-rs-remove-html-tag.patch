@@ -1,0 +1,15 @@
+diff --git a/src/Controller/ViewsAutocompleteFiltersController.php b/src/Controller/ViewsAutocompleteFiltersController.php
+index 5458b6c7..5b8940fc 100644
+--- a/src/Controller/ViewsAutocompleteFiltersController.php
++++ b/src/Controller/ViewsAutocompleteFiltersController.php
+@@ -246,8 +246,8 @@ public function autocomplete(Request $request, $view_name, $view_display, $filte
+ 
+                 // Add a class wrapper for a few required CSS overrides.
+                 $matches[] = [
+-                  'value' => $suggestion,
+-                  'label' => $dropdown,
++                  'value' => strip_tags($suggestion),
++                  'label' => strip_tags($dropdown),
+                 ];
+               }
+             }

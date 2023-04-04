@@ -1,0 +1,15 @@
+diff --git a/progressive_image_loading.module b/progressive_image_loading.module
+index c03d987..b30e948 100644
+--- a/progressive_image_loading.module
++++ b/progressive_image_loading.module
+@@ -62,6 +62,10 @@ function progressive_image_loading_preprocess_hook(array &$variables, $hook) {
+     return;
+   }
+ 
++  if (Drupal::currentUser()->isAuthenticated()) {
++    return;
++  }
++
+   switch ($hook) {
+     case 'image':
+     case 'responsive_image':

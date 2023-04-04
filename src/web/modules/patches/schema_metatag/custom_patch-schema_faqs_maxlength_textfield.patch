@@ -1,0 +1,44 @@
+diff --git a/src/Plugin/metatag/Tag/TagSchemaQuestionTrait.php b/src/Plugin/metatag/Tag/SchemaQuestionTrait.php
+index 1a50bf1..d741e15 100644
+--- a/src/Plugin/metatag/Tag/SchemaQuestionTrait.php
++++ b/src/Plugin/metatag/Tag/SchemaQuestionTrait.php
+@@ -77,7 +77,7 @@ trait SchemaQuestionTrait {
+       '#type' => 'textfield',
+       '#title' => $this->t('name'),
+       '#default_value' => !empty($value['name']) ? $value['name'] : '',
+-      '#maxlength' => 255,
++      '#maxlength' => 65535,
+       '#required' => $input_values['#required'],
+       '#description' => $this->t('REQUIRED BY GOOGLE. The full text of the short form of the question. For example, "How many teaspoons in a cup?".'),
+     ];
+@@ -86,7 +86,7 @@ trait SchemaQuestionTrait {
+       '#type' => 'textfield',
+       '#title' => $this->t('text'),
+       '#default_value' => !empty($value['text']) ? $value['text'] : '',
+-      '#maxlength' => 255,
++      '#maxlength' => 65535,
+       '#required' => $input_values['#required'],
+       '#description' => $this->t('RECOMMENDED BY GOOGLE. The full text of the long form of the question.'),
+     ];
+diff --git a/src/Plugin/metatag/Tag/SchemaAnswerTrait.php b/src/Plugin/metatag/Tag/SchemaAnswerTrait.php
+index 5849559..9a94cd4 100644
+--- a/src/Plugin/metatag/Tag/SchemaAnswerTrait.php
++++ b/src/Plugin/metatag/Tag/SchemaAnswerTrait.php
+@@ -69,7 +69,7 @@ trait SchemaAnswerTrait {
+       '#type' => 'textfield',
+       '#title' => $this->t('text'),
+       '#default_value' => !empty($value['text']) ? $value['text'] : '',
+-      '#maxlength' => 255,
++      '#maxlength' => 65535,
+       '#required' => $input_values['#required'],
+       '#description' => $this->t('REQUIRED BY GOOGLE. The full text of the answer.'),
+     ];
+@@ -78,7 +78,7 @@ trait SchemaAnswerTrait {
+       '#type' => 'textfield',
+       '#title' => $this->t('url'),
+       '#default_value' => !empty($value['url']) ? $value['url'] : '',
+-      '#maxlength' => 255,
++      '#maxlength' => 65535,
+       '#required' => $input_values['#required'],
+       '#description' => $this->t('STRONGLY RECOMMENDED BY GOOGLE. A URL that links directly to this answer.'),
+     ];

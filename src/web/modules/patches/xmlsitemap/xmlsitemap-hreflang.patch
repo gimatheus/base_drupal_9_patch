@@ -1,0 +1,32 @@
+diff --git a/xmlsitemap.module b/xmlsitemap.module
+index 1eb15b1..025092f 100644
+--- a/xmlsitemap.module
++++ b/xmlsitemap.module
+@@ -1935,16 +1935,17 @@ function _xmlsitemap_element_add_alternate_lang(array &$element, $loc, LanguageI
+   ];
+ 
+   $alternate_href = Url::fromUri('internal:' . $loc, ['language' => $language] + $url_options)->toString();
+-  if ($alternate_href !== $element['loc']) {
+-    $element[] = [
+-      'key' => 'xhtml:link',
+-      'attributes' => [
+-        'rel' => 'alternate',
+-        'hreflang' => $language->getId(),
+-        'href' => $alternate_href,
+-      ],
+-    ];
+-  }
++  //We don't want to add the hreflang information to the sitemap
++  //if ($alternate_href !== $element['loc']) {
++  //  $element[] = [
++  //    'key' => 'xhtml:link',
++  //   'attributes' => [
++  //      'rel' => 'alternate',
++  //      'hreflang' => $language->getId(),
++  //      'href' => $alternate_href,
++  //    ],
++  //  ];
++  //g}
+ }
+ 
+ /**

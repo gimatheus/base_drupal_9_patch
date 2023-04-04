@@ -1,0 +1,26 @@
+diff --git a/src/SchemaMetatagManager.php b/src/SchemaMetatagManager.php
+index 8d6fae2..b540492 100644
+--- a/src/SchemaMetatagManager.php
++++ b/src/SchemaMetatagManager.php
+@@ -179,6 +179,20 @@ class SchemaMetatagManager implements SchemaMetatagManagerInterface {
+     return $value;
+   }
+
++  /**
++   * Explode $value by semicolon
++   */
++  public static function explode2($value) {
++    $value = explode(';', $value);
++    $value = array_map('trim', $value);
++    //$value = array_unique($value);
++    if (count($value) == 1) {
++      return $value[0];
++    }
++
++    return $value;
++  }
++
+   /**
+    * {@inheritdoc}
+    */
+

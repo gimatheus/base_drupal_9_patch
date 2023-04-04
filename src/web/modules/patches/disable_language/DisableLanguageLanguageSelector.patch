@@ -1,0 +1,44 @@
+diff --git a/disable_language.module b/disable_language.module
+index 3ae8149..a9beab0 100644
+--- a/disable_language.module
++++ b/disable_language.module
+@@ -202,3 +202,28 @@ function disable_language_alter_preferred_languages($element) {
+ 
+   return $element;
+ }
++
++/**
++ * Implements hook_field_widget_WIDGET_TYPE_form_alter().
++ */
++function disable_language_field_widget_language_select_form_alter(&$element, FormStateInterface $form_state, $context) {
++  // Check permissions and add after_build callback to language select widgets.
++  if (\Drupal::currentUser()->hasPermission('create content in disabled language')) {
++    return;
++  }
++  $element['#after_build'][] = 'disable_language_language_select_after_build';
++}
++
++/**
++ * After build callback for language_select widgets.
++ */
++function disable_language_language_select_after_build($element, $form_state) {
++  // Get disabled languages and remove them from options of language select.
++  $disabled_languages = \Drupal::service('disable_language.disable_language_manager')->getDisabledLanguages();
++  foreach (array_keys($disabled_languages) as $langcode) {
++    if (isset($element['value']['#options'][$langcode])) {
++      unset($element['value']['#options'][$langcode]);
++    }
++  }
++  return $element;
++}
+diff --git a/disable_language.permissions.yml b/disable_language.permissions.yml
+index 4d7851b..8991b6e 100644
+--- a/disable_language.permissions.yml
++++ b/disable_language.permissions.yml
+@@ -1,3 +1,6 @@
+ 'view disabled languages':
+   title: 'View disabled languages'
+   description: 'Allows the user to see disabled languages'
++'create content in disabled language':
++  title: 'Create content in disabled language'
++  description: 'Allows the user to create content in a disabled language'

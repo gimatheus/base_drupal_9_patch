@@ -1,0 +1,37 @@
+diff --git a/config/install/progressive_image_loading.settings.yml b/config/install/progressive_image_loading.settings.yml
+index 8388c72..38a3ff7 100644
+--- a/config/install/progressive_image_loading.settings.yml
++++ b/config/install/progressive_image_loading.settings.yml
+@@ -7,6 +7,9 @@ excluded_paths: |
+   /entity-embed/*
+   /file/*/inline-edit
+   /node/add
++  /node/add/*
+   /node/*/edit
++  /block/add/*
++  /block/*
+   /views/ajax
+ internal_paths: ""
+diff --git a/progressive_image_loading.libraries.yml b/progressive_image_loading.libraries.yml
+index 327e4fb..f58030d 100644
+--- a/progressive_image_loading.libraries.yml
++++ b/progressive_image_loading.libraries.yml
+@@ -19,4 +19,4 @@ intersection_observer_polyfill:
+     url: https://raw.githubusercontent.com/w3c/IntersectionObserver/master/LICENSE.md
+     gpl-compatible: true
+   js:
+-    /libraries/intersection-observer/intersection-observer.js: { }
++    /libraries/intersection-observer/polyfill/intersection-observer.js: { }
+diff --git a/src/ProgressiveImageLoadingManager.php b/src/ProgressiveImageLoadingManager.php
+index 18a1ebf..d557983 100644
+--- a/src/ProgressiveImageLoadingManager.php
++++ b/src/ProgressiveImageLoadingManager.php
+@@ -147,7 +147,7 @@ class ProgressiveImageLoadingManager implements ProgressiveImageLoadingManagerIn
+ 
+     // If we can't generate a placeholder, just return base64 encoded
+     // transparent svg.
+-    return "data:image/svg+xml;charset=utf8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 1 1%22 width=%22$width%22 height=%22$height%22%3E3C/svg%3E";
++    return "data:image/svg+xml;charset=utf8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 1 1%22 width=%22$width%22 height=%22$height%22%3E%3C/svg%3E";
+   }
+ 
+   /**

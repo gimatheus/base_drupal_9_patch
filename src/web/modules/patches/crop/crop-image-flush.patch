@@ -1,0 +1,37 @@
+diff --git a/src/Entity/Crop.php b/src/Entity/Crop.php
+index 823d9ff..01c48e0 100644
+--- a/src/Entity/Crop.php
++++ b/src/Entity/Crop.php
+@@ -266,8 +266,8 @@ class Crop extends ContentEntityBase implements CropInterface {
+     // manually generated and pushed to your cloud storage service. In that
+     // case, set this configuration variable to false.
+     $flush_derivative_images = \Drupal::config('crop.settings')->get('flush_derivative_images');
+-    if ($flush_derivative_images) {
+-      image_path_flush($this->uri->value);
++    if ($flush_derivative_images && $update) {
++      $this->imageStylePathFlush();
+     }
+   }
+
+@@ -389,4 +389,21 @@ class Crop extends ContentEntityBase implements CropInterface {
+     return $fields;
+   }
+
++  /**
++   * Flushes cached versions (related to the current crop type) of a file.
++   *
++   * @see image_path_flush
++   */
++  protected function imageStylePathFlush() {
++    $image_style_ids = \Drupal::entityTypeManager()->getStorage('image_style')->getQuery()
++      ->condition('effects.*.data.crop_type', $this->bundle())
++      ->execute();
++
++    $styles = ImageStyle::loadMultiple($image_style_ids);
++
++    foreach ($styles as $style) {
++      $style->flush($this->uri->value);
++    }
++  }
++
+ }

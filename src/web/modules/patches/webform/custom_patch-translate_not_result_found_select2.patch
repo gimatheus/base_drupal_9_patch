@@ -1,0 +1,16 @@
+diff --git a/js/webform.element.select2.js b/js/webform.element.select2.js
+index 5827c29..acd17a5 100644
+--- a/js/webform.element.select2.js
++++ b/js/webform.element.select2.js
+@@ -83,6 +83,12 @@
+           //To allow whitespace at the end of search text
+           options.matcher = matchCustom;
+
++          options.language = {
++            noResults: function() {
++              return Drupal.t("Resultado no encontrado");
++            }
++          }
++
+           $select.select2(options);
+         });

@@ -1,0 +1,32 @@
+diff --git a/colorbox_load.module b/colorbox_load.module
+index 9eca518..0c70a60 100644
+--- a/colorbox_load.module
++++ b/colorbox_load.module
+@@ -12,14 +12,6 @@ use Drupal\Core\Routing\RouteMatchInterface;
+  * Allow you to load any content in a colorbox.
+  */
+ 
+-/**
+- * Implements hook_page_attachments().
+- */
+-function colorbox_load_page_attachments(array &$page) {
+-  \Drupal::service('colorbox.attachment')->attach($page);
+-  $page['#attached']['library'][] = 'colorbox_load/colorbox_load';
+-}
+-
+ /**
+  * Implements hook_help().
+  */
+diff --git a/src/Renderer.php b/src/Renderer.php
+index e47f47c..f62234e 100644
+--- a/src/Renderer.php
++++ b/src/Renderer.php
+@@ -34,6 +34,8 @@ class Renderer implements MainContentRendererInterface {
+    * {@inheritdoc}
+    */
+   public function renderResponse(array $main_content, Request $request, RouteMatchInterface $route_match) {
++    \Drupal::service('colorbox.attachment')->attach($main_content);
++    $main_content['#attached']['library'][] = 'colorbox_load/colorbox_load';
+     $response = new AjaxResponse();
+     $content = $this->renderer->render($main_content);
+     $response->setAttachments($main_content['#attached']);

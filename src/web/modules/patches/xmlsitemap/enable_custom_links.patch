@@ -1,0 +1,38 @@
+diff --git a/xmlsitemap/xmlsitemap_custom/src/Form/XmlSitemapCustomAddForm.php b/xmlsitemap/xmlsitemap_custom/src/Form/XmlSitemapCustomAddForm.php
+index 118b4c3..19e06ca 100644
+--- a/xmlsitemap/xmlsitemap_custom/src/Form/XmlSitemapCustomAddForm.php
++++ b/xmlsitemap/xmlsitemap_custom/src/Form/XmlSitemapCustomAddForm.php
+@@ -223,11 +223,9 @@ class XmlSitemapCustomAddForm extends FormBase {
+     if ($result != FALSE) {
+       $form_state->setErrorByName('loc', $this->t('There is already an existing link in the sitemap with the path %link.', ['%link' => $link['loc']]));
+     }
+-    try {
+-      $client = $this->httpClientFactory->fromOptions(['config/curl', [CURLOPT_FOLLOWLOCATION => FALSE]]);
+-      $client->get(Url::fromUserInput($link['loc'], ['absolute' => TRUE])->toString());
+-    }
+-    catch (\Exception $e) {
++    // Path validation
++    $url = \Drupal::pathValidator()->getUrlIfValid($link['loc']);
++    if ($url == FALSE) {
+       $form_state->setErrorByName('loc', $this->t('The custom link @link is either invalid or it cannot be accessed by anonymous users.', ['@link' => $link['loc']]));
+     }
+ 
+diff --git a/xmlsitemap/xmlsitemap_custom/src/Form/XmlSitemapCustomEditForm.php b/xmlsitemap/xmlsitemap_custom/src/Form/XmlSitemapCustomEditForm.php
+index 2e6c7aa..357c8ca 100644
+--- a/xmlsitemap/xmlsitemap_custom/src/Form/XmlSitemapCustomEditForm.php
++++ b/xmlsitemap/xmlsitemap_custom/src/Form/XmlSitemapCustomEditForm.php
+@@ -183,11 +183,9 @@ class XmlSitemapCustomEditForm extends FormBase {
+     $link['loc'] = $this->aliasManager->getPathByAlias($link['loc'], $link['language']);
+     $form_state->setValue('loc', $link['loc']);
+ 
+-    try {
+-      $client = $this->httpClientFactory->fromOptions(['config/curl', [CURLOPT_FOLLOWLOCATION => FALSE]]);
+-      $client->get(Url::fromUserInput($link['loc'], ['absolute' => TRUE])->toString());
+-    }
+-    catch (\Exception $e) {
++    // Path validation
++    $url = \Drupal::pathValidator()->getUrlIfValid($link['loc']);
++    if ($url == FALSE) {
+       $form_state->setErrorByName('loc', $this->t('The custom link @link is either invalid or it cannot be accessed by anonymous users.', ['@link' => $link['loc']]));
+     }
+ 

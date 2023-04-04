@@ -1,0 +1,21 @@
+diff --git a/src/Plugin/views/field/block_panelizer_usage__panelizered_nodes.php b/src/Plugin/views/field/block_panelizer_usage__panelizered_nodes.php
+index dc8508b46..f768e57b7 100644
+--- a/src/Plugin/views/field/block_panelizer_usage__panelizered_nodes.php
++++ b/src/Plugin/views/field/block_panelizer_usage__panelizered_nodes.php
+@@ -128,9 +128,13 @@ public function getPanelizeredNidsByBlockUuid() {
+ 
+       // Loop through blocks to build block-uuid-keyed array of nids.
+       foreach ($config['blocks'] as $panelizer_uuid => $block) {
+-        list($module, $block_uuid) = explode(':', $block['id']);
+-        if (!isset($panelizered_nodes_by_block_uuid[$block_uuid][$nid])) {
+-          $panelizered_nodes_by_block_uuid[$block_uuid][$nid] = $title;
++        $block_id = explode(':', $block['id']);
++        if(sizeof($block_id) == 2) {
++          list($module, $block_uuid) = $block_id;
++
++          if (!isset($panelizered_nodes_by_block_uuid[$block_uuid][$nid])) {
++            $panelizered_nodes_by_block_uuid[$block_uuid][$nid] = $title;
++          }
+         }
+       }
+     }

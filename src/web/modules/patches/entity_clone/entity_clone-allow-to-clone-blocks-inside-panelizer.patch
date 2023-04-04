@@ -1,0 +1,166 @@
+diff --git a/src/EntityClone/Content/ContentEntityCloneFormBase.php b/src/EntityClone/Content/ContentEntityCloneFormBase.php
+index 1a83099..3299b89 100644
+--- a/src/EntityClone/Content/ContentEntityCloneFormBase.php
++++ b/src/EntityClone/Content/ContentEntityCloneFormBase.php
+@@ -88,6 +88,11 @@ class ContentEntityCloneFormBase implements EntityHandlerInterface, EntityCloneF
+       'recursive' => [],
+     ];
+ 
++    // Determines if the current Panelizer has blocks inside.
++    if ($entity->hasField('panelizer')) {
++      $this->getPanelizerBlocks($entity);
++    }
++
+     if ($entity instanceof FieldableEntityInterface) {
+       $discovered_entities[$entity->getEntityTypeId()][$entity->id()] = $entity;
+       foreach ($entity->getFieldDefinitions() as $field_id => $field_definition) {
+@@ -289,4 +294,40 @@ class ContentEntityCloneFormBase implements EntityHandlerInterface, EntityCloneF
+ 
+   }
+ 
++  /**
++   * Get all blocks inside Panelizer field.
++   *
++   * @param \Drupal\Core\Entity\EntityInterface $entity
++   *   The entity.
++   *
++   * @throws \Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException
++   * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
++   */
++  protected function getPanelizerBlocks(&$entity) {
++    // Get Panelizer field data.
++    $panelizer = $entity->get('panelizer');
++
++    if ($panelizer_data = $panelizer->getValue()) {
++      $panelizer_data = reset($panelizer_data);
++
++      if (!empty($panelizer_data['panels_display']['blocks'])) {
++        foreach ($panelizer_data['panels_display']['blocks'] as $block) {
++          $block_info = explode(':', $block['id']);
++          if (reset($block_info) === 'block_content') {
++            $block_data = $this->entityTypeManager->getStorage(reset($block_info))->loadByProperties([
++              'uuid' => end($block_info),
++            ]);
++            $panelizer_blocks_stored[] = ['target_id' => key($block_data)];
++          }
++        }
++      }
++
++      // Puts blocks belonging to Panelizer inside support field.
++      if ($entity->hasField('panelizer_blocks') && !empty($panelizer_blocks_stored)) {
++        $panelizer_blocks = $entity->get('panelizer_blocks');
++        $panelizer_blocks->setValue($panelizer_blocks_stored);
++      }
++    }
++  }
++
+ }
+diff --git a/src/Form/EntityCloneForm.php b/src/Form/EntityCloneForm.php
+index f97adba..aeb6e3a 100644
+--- a/src/Form/EntityCloneForm.php
++++ b/src/Form/EntityCloneForm.php
+@@ -13,6 +13,7 @@ use Drupal\entity_clone\Event\EntityCloneEvent;
+ use Drupal\entity_clone\Event\EntityCloneEvents;
+ use Symfony\Component\DependencyInjection\ContainerInterface;
+ use Symfony\Component\EventDispatcher\EventDispatcherInterface;
++use Symfony\Component\HttpFoundation\RedirectResponse;
+ 
+ /**
+  * Implements an entity Clone form.
+@@ -86,6 +87,62 @@ class EntityCloneForm extends FormBase {
+     $parameter_name = $route_match->getRouteObject()->getOption('_entity_clone_entity_type_id');
+     $this->entity = $route_match->getParameter($parameter_name);
+ 
++    // Make sure virtual field exists.
++    if ($this->getEntity()->hasField('panelizer')) {
++      $panelizer = $this->getEntity()->get('panelizer');
++
++      if ($panelizer_data = $panelizer->getValue()) {
++        $panelizer_data = reset($panelizer_data);
++
++        if (!empty($panelizer_data['panels_display']['blocks'])) {
++          // Panelizer settings.
++          $service = \Drupal::service('panelizer');
++          $settings = $service->getPanelizerSettings($this->getEntity()->getEntityTypeId(), $this->getEntity()->bundle(), $panelizer_data['view_mode']);
++
++          $fields = $this->getEntity()->getFieldDefinitions();
++          if ($settings['enable'] && !isset($fields['panelizer_blocks'])) {
++            $field_storage = $this->entityTypeManager->getStorage('field_storage_config')->load("{$this->getEntity()->getEntityTypeId()}.panelizer_blocks");
++            if (!$field_storage) {
++              $field_storage = $this->entityTypeManager->getStorage('field_storage_config')->create([
++                'entity_type' => $this->getEntity()->getEntityTypeId(),
++                'field_name' => 'panelizer_blocks',
++                'type' => 'entity_reference',
++                'cardinality' => -1,
++                'settings' => [
++                  'target_type' => 'block_content',
++                ],
++                'status' => FALSE,
++              ]);
++              $field_storage->save();
++            }
++
++            $field = $this->entityTypeManager->getStorage('field_config')->load("{$this->getEntity()->getEntityTypeId()}.{$this->entity->bundle()}.panelizer_blocks");
++            if (!$field) {
++              $field = $this->entityTypeManager->getStorage('field_config')->create([
++                'entity_type' => $this->entity->getEntityTypeId(),
++                'field_name' => 'panelizer_blocks',
++                'field_storage' => $field_storage,
++                'bundle' => $this->entity->bundle(),
++                'label' => $this->t('Panelizer blocks'),
++                'settings' => [
++                  'handler' => 'default',
++                ],
++              ]);
++              $field->save();
++            }
++
++            // Force page reload, it's the only way to refresh entity object.
++            $request_stack = \Drupal::service('request_stack');
++            $current_request = $request_stack->getCurrentRequest();
++
++            $response = new RedirectResponse($current_request->getPathInfo());
++            $response->send();
++            return;
++          }
++        }
++      }
++    }
++
+     $this->entityTypeDefinition = $entity_type_manager->getDefinition($this->entity->getEntityTypeId());
+   }
+ 
+@@ -168,6 +225,33 @@ class EntityCloneForm extends FormBase {
+       '@type' => $this->entity->getEntityTypeId(),
+     ]));
+ 
++    // Update block references for the cloned entity.
++    if ($cloned_entity->hasField('panelizer_blocks')) {
++      if (!empty($cloned_entity->get('panelizer_blocks')->getValue())) {
++        $cloned_panelizer = $cloned_entity->get('panelizer')->getValue();
++        $cloned_panelizer = reset($cloned_panelizer);
++
++        $panelizer_blocks = $cloned_entity->get('panelizer_blocks');
++        foreach ($panelizer_blocks->referencedEntities() as $block) {
++          foreach ($cloned_panelizer['panels_display']['blocks'] as $key => $value) {
++            $item_info = explode(':', $value['id']);
++            if (reset($item_info) === 'block_content') {
++              $uuid = \Drupal::service('uuid')->generate();
++              $cloned_panelizer['panels_display']['blocks'][$uuid] = $cloned_panelizer['panels_display']['blocks'][$key];
++              $cloned_panelizer['panels_display']['blocks'][$uuid]['id'] = "{$block->getEntityTypeId()}:{$block->uuid()}";
++              $cloned_panelizer['panels_display']['blocks'][$uuid]['uuid'] = $uuid;
++              unset($cloned_panelizer['panels_display']['blocks'][$key]);
++              break;
++            }
++          }
++        }
++
++        // Update Panelizer field.
++        $cloned_entity->set('panelizer', $cloned_panelizer);
++        $cloned_entity->save();
++      }
++    }
++
+     $this->formSetRedirect($form_state, $cloned_entity);
+   }
+ 

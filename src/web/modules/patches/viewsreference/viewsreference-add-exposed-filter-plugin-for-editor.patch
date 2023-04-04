@@ -1,0 +1,306 @@
+diff --git a/src/Plugin/Field/FieldWidget/ViewsReferenceTrait.php b/src/Plugin/Field/FieldWidget/ViewsReferenceTrait.php
+index dabf7a45..587dc3cd 100644
+--- a/src/Plugin/Field/FieldWidget/ViewsReferenceTrait.php
++++ b/src/Plugin/Field/FieldWidget/ViewsReferenceTrait.php
+@@ -125,6 +125,16 @@ public function fieldElement(FieldItemListInterface $items, $delta, array $eleme
+       ],
+     ];
+ 
++    $element['display_id']['#ajax'] = [
++      'callback' => [$class, 'itemAjaxRefresh'],
++      'event' => $ajax_event,
++      'wrapper' => $html_wrapper_id,
++      'progress' => [
++        'type' => 'throbber',
++        'message' => $this->t('Getting display IDs...'),
++      ],
++    ];
++
+     $field_data = [];
+     if (isset($field_value['data'])) {
+       $field_data = unserialize($field_value['data']);
+@@ -141,6 +151,15 @@ public function fieldElement(FieldItemListInterface $items, $delta, array $eleme
+       ],
+     ];
+ 
++    // Load the view, if fully selected (target_id + display_id).
++    $view = NULL;
++    if (!empty($field_value['target_id']) && !empty($field_value['display_id'])) {
++      if ($view = Views::getView($field_value['target_id'])) {
++        $view->setDisplay($field_value['display_id']);
++        $view->initHandlers();
++      }
++    }
++
+     $viewsreference_plugin_manager = \Drupal::service('plugin.manager.viewsreference.setting');
+     $plugin_definitions = $viewsreference_plugin_manager->getDefinitions();
+     $enabled_settings = array_filter($this->getFieldSetting('enabled_settings'));
+@@ -161,7 +180,7 @@ public function fieldElement(FieldItemListInterface $items, $delta, array $eleme
+           ],
+         ];
+ 
+-        $plugin_instance->alterFormField($element['options'][$plugin_definition['id']]);
++        $plugin_instance->alterFormField($element['options'][$plugin_definition['id']], $view);
+       }
+     }
+ 
+@@ -174,11 +193,11 @@ public function fieldElement(FieldItemListInterface $items, $delta, array $eleme
+ 
+     // Wrap element for AJAX replacement.
+     $element = [
+-      '#prefix' => '<div id="' . $html_wrapper_id . '">',
+-      '#suffix' => '</div>',
+-      // Pass the id along to other methods.
+-      '#wrapper_id' => $html_wrapper_id,
+-    ] + $element;
++        '#prefix' => '<div id="' . $html_wrapper_id . '">',
++        '#suffix' => '</div>',
++        // Pass the id along to other methods.
++        '#wrapper_id' => $html_wrapper_id,
++      ] + $element;
+ 
+     return $element;
+   }
+diff --git a/src/Plugin/ViewsReferenceSetting/ViewsReferenceArgument.php b/src/Plugin/ViewsReferenceSetting/ViewsReferenceArgument.php
+index 49c30710..a7bfcd06 100644
+--- a/src/Plugin/ViewsReferenceSetting/ViewsReferenceArgument.php
++++ b/src/Plugin/ViewsReferenceSetting/ViewsReferenceArgument.php
+@@ -23,7 +23,7 @@ class ViewsReferenceArgument extends PluginBase implements ViewsReferenceSetting
+   /**
+    * {@inheritdoc}
+    */
+-  public function alterFormField(&$form_field) {
++  public function alterFormField(&$form_field, ViewExecutable $view = NULL) {
+     $form_field['#weight'] = 40;
+   }
+
+diff --git a/src/Plugin/ViewsReferenceSetting/ViewsReferenceExposedFilters.php b/src/Plugin/ViewsReferenceSetting/ViewsReferenceExposedFilters.php
+new file mode 100644
+index 0000000..bec77b6
+--- /dev/null
++++ b/src/Plugin/ViewsReferenceSetting/ViewsReferenceExposedFilters.php
+@@ -0,0 +1,139 @@
++<?php
++
++namespace Drupal\viewsreference\Plugin\ViewsReferenceSetting;
++
++use Drupal\Component\Plugin\PluginBase;
++use Drupal\Core\Form\FormState;
++use Drupal\Core\StringTranslation\StringTranslationTrait;
++use Drupal\views\ViewExecutable;
++use Drupal\viewsreference\Plugin\ViewsReferenceSettingInterface;
++
++/**
++ * The views reference setting plugin for exposed filters, for editors.
++ *
++ * @ViewsReferenceSetting(
++ *   id = "exposed_filters",
++ *   label = @Translation("Exposed Filters - editor view"),
++ *   default_value = "",
++ * )
++ */
++class ViewsReferenceExposedFilters extends PluginBase implements ViewsReferenceSettingInterface {
++
++  use StringTranslationTrait;
++
++  /**
++   * {@inheritdoc}
++   */
++  public function alterFormField(&$form_field, ViewExecutable $view = NULL) {
++    if (!$view) {
++      $form_field = [];
++      return;
++    }
++
++    $current_values = $form_field['#default_value'];
++    unset($form_field['#default_value']);
++    $form_field['#type'] = 'container';
++    $form_field['#tree'] = TRUE;
++    $form_field['vr_exposed_filters_visible'] = [
++      '#type' => 'checkbox',
++      '#title' => $this->t('Show exposed filters'),
++      '#default_value' => (isset($current_values['vr_exposed_filters_visible']) && $current_values['vr_exposed_filters_visible']),
++    ];
++
++    // Some plugin may look into current exposed input to change some behaviour,
++    // i.e. setting a default value (see SHS for an example). So set current
++    // values as exposed input.
++    $view->setExposedInput($current_values);
++
++    $form_state = (new FormState())
++      ->setStorage([
++        'view' => $view,
++        'display' => $view->display_handler->display,
++      ]);
++
++    // Let form plugins know this is for exposed widgets.
++    // @see ViewExposedForm::buildForm()
++    $form_state->set('exposed', TRUE);
++
++    // Remember filters IDs and names.
++    $vrExposedFiltersAlias = [];
++    // Go through each handler and let it generate its exposed widget.
++    // @see ViewExposedForm::buildForm()
++    foreach ($view->display_handler->handlers as $type => $value) {
++      /** @var \Drupal\views\Plugin\views\ViewsHandlerInterface $handler */
++      foreach ($view->$type as $id => $handler) {
++        if ($handler->canExpose() && $handler->isExposed()) {
++          $handler->buildExposedForm($form_field, $form_state);
++
++          if ($info = $handler->exposedInfo()) {
++            if (isset($form_field[$info['value']])) {
++              // @todo: We need to verify when views use the alias or the ID,
++              // I need sometimes the ID how key and others the alias.
++              $vrExposedFiltersAlias[$id] = $info['value'];
++              $vrExposedFiltersAlias[$info['value']] = $id;
++              // Method buildExposedForm() gets rid of element titles, unless
++              // type is 'checkbox'. So restore it if missing.
++              if (empty($form_field[$info['value']]['#title'])) {
++                $form_field[$info['value']]['#title'] = $this->t('@label', ['@label' => $info['label']]);
++              }
++
++              // Manually set default values, until we don't handle these
++              // properly from form_state.
++              // @todo: use (Sub)FormState to handle default_value.
++              if (isset($current_values[$info['value']])) {
++                $form_field[$info['value']]['#default_value'] = $current_values[$info['value']];
++              }
++            }
++          }
++        }
++      }
++    }
++    // Set filters alias paths.
++    $form_field['vr_exposed_filters_alias'] = [
++      '#type' => 'hidden',
++      '#default_value' => serialize($vrExposedFiltersAlias),
++    ];
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function alterView(ViewExecutable $view, $values) {
++    // Get exposed filter visibility, and remove configuration.
++    $vrExposedFiltersVisible = FALSE;
++    if (isset($values['vr_exposed_filters_visible'])) {
++      $vrExposedFiltersVisible = $values['vr_exposed_filters_visible'];
++      unset($values['vr_exposed_filters_visible']);
++    }
++    // Get exposed filters alias and names, and remove.
++    $vrExposedFiltersAlias = [];
++    if (isset($values['vr_exposed_filters_alias'])) {
++      $vrExposedFiltersAlias = unserialize($values['vr_exposed_filters_alias']);
++      unset($values['vr_exposed_filters_alias']);
++    }
++    // Populate default filter's value.
++    if (!empty($values) && is_array($values)) {
++      $view_filters = $view->display_handler->getOption('filters');
++      $filters = [];
++      foreach ($values as $index => $value) {
++        // User selection must have preference.
++        if ($selected = $view->getRequest()->get($index)) {
++          $filters[$index] = $selected;
++        }
++        // Else set the editor preference.
++        elseif (!empty($value) && isset($view_filters[$vrExposedFiltersAlias[$index]])) {
++          $filters[$index] = $value;
++        }
++      }
++      if ($filters) {
++        $view->setExposedInput($filters);
++      }
++    }
++
++    if (!$vrExposedFiltersVisible) {
++      // Force exposed filters form to not display when rendering the view.
++      $view->display_handler->setOption('exposed_block', TRUE);
++    }
++  }
++
++}
+diff --git a/src/Plugin/ViewsReferenceSetting/ViewsReferenceExposedFilters.php b/src/Plugin/ViewsReferenceSetting/ViewsReferenceExposedFilters.php
+index bec77b69..09a07698 100644
+--- a/src/Plugin/ViewsReferenceSetting/ViewsReferenceExposedFilters.php
++++ b/src/Plugin/ViewsReferenceSetting/ViewsReferenceExposedFilters.php
+@@ -14,7 +14,7 @@
+  * @ViewsReferenceSetting(
+  *   id = "exposed_filters",
+  *   label = @Translation("Exposed Filters - editor view"),
+- *   default_value = "",
++ *   default_value = ""
+  * )
+  */
+ class ViewsReferenceExposedFilters extends PluginBase implements ViewsReferenceSettingInterface {
+diff --git a/src/Plugin/ViewsReferenceSetting/ViewsReferenceLimit.php b/src/Plugin/ViewsReferenceSetting/ViewsReferenceLimit.php
+index 7de07df3..1066fe64 100644
+--- a/src/Plugin/ViewsReferenceSetting/ViewsReferenceLimit.php
++++ b/src/Plugin/ViewsReferenceSetting/ViewsReferenceLimit.php
+@@ -23,7 +23,7 @@ class ViewsReferenceLimit extends PluginBase implements ViewsReferenceSettingInt
+   /**
+    * {@inheritdoc}
+    */
+-  public function alterFormField(&$form_field) {
++  public function alterFormField(&$form_field, ViewExecutable $view = NULL) {
+     $form_field['#title'] = $this->t('Items per page');
+     $form_field['#type'] = 'number';
+     $form_field['#weight'] = 25;
+diff --git a/src/Plugin/ViewsReferenceSetting/ViewsReferenceOffset.php b/src/Plugin/ViewsReferenceSetting/ViewsReferenceOffset.php
+index fbccbefa..c5c493a9 100644
+--- a/src/Plugin/ViewsReferenceSetting/ViewsReferenceOffset.php
++++ b/src/Plugin/ViewsReferenceSetting/ViewsReferenceOffset.php
+@@ -23,7 +23,7 @@ class ViewsReferenceOffset extends PluginBase implements ViewsReferenceSettingIn
+   /**
+    * {@inheritdoc}
+    */
+-  public function alterFormField(&$form_field) {
++  public function alterFormField(&$form_field, ViewExecutable $view = NULL) {
+     $form_field['#title'] = $this->t('Offset results');
+     $form_field['#type'] = 'number';
+     $form_field['#weight'] = 30;
+diff --git a/src/Plugin/ViewsReferenceSetting/ViewsReferencePager.php b/src/Plugin/ViewsReferenceSetting/ViewsReferencePager.php
+index f32e1985..07531da7 100644
+--- a/src/Plugin/ViewsReferenceSetting/ViewsReferencePager.php
++++ b/src/Plugin/ViewsReferenceSetting/ViewsReferencePager.php
+@@ -23,7 +23,7 @@ class ViewsReferencePager extends PluginBase implements ViewsReferenceSettingInt
+   /**
+    * {@inheritdoc}
+    */
+-  public function alterFormField(&$form_field) {
++  public function alterFormField(&$form_field, ViewExecutable $view = NULL) {
+     $form_field['#type'] = 'select';
+     $form_field['#options'] = [
+       '' => $this->t('Default settings'),
+diff --git a/src/Plugin/ViewsReferenceSetting/ViewsReferenceTitle.php b/src/Plugin/ViewsReferenceSetting/ViewsReferenceTitle.php
+index 531974d7..4a5e45b2 100644
+--- a/src/Plugin/ViewsReferenceSetting/ViewsReferenceTitle.php
++++ b/src/Plugin/ViewsReferenceSetting/ViewsReferenceTitle.php
+@@ -23,7 +23,7 @@ class ViewsReferenceTitle extends PluginBase implements ViewsReferenceSettingInt
+   /**
+    * {@inheritdoc}
+    */
+-  public function alterFormField(&$form_field) {
++  public function alterFormField(&$form_field, ViewExecutable $view = NULL) {
+     $form_field['#type'] = 'checkbox';
+     $form_field['#weight'] = 20;
+   }
+diff --git a/src/Plugin/ViewsReferenceSettingInterface.php b/src/Plugin/ViewsReferenceSettingInterface.php
+index 9b907c19..11bdfdfd 100644
+--- a/src/Plugin/ViewsReferenceSettingInterface.php
++++ b/src/Plugin/ViewsReferenceSettingInterface.php
+@@ -15,8 +15,11 @@
+    *
+    * @param array $form_field
+    *   The form field array.
++   * @param \Drupal\views\ViewExecutable|null $view
++   *   The view, with the right display already set as active. NULL until both
++   *   the view and the display are selected.
+    */
+-  public function alterFormField(array &$form_field);
++  public function alterFormField(&$form_field, ViewExecutable $view = NULL);
+ 
+   /**
+    * Alter the view object.
+diff --git a/src/ViewsReferenceServiceProvider.php b/src/ViewsReferenceServiceProvider.php
+old mode 100755
+new mode 100644

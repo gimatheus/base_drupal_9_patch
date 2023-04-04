@@ -1,0 +1,96 @@
+diff --git a/heading.module b/heading.module
+index 830fadd7..fd92640d 100644
+--- a/heading.module
++++ b/heading.module
+@@ -16,6 +16,7 @@ function heading_theme($existing, $type, $theme, $path) {
+       'variables' => [
+         'size' => NULL,
+         'text' => NULL,
++        'classes' => NULL,
+       ],
+     ],
+   ];
+diff --git a/src/Plugin/Field/FieldFormatter/HeadingFormatter.php b/src/Plugin/Field/FieldFormatter/HeadingFormatter.php
+index 6707f156..30620271 100644
+--- a/src/Plugin/Field/FieldFormatter/HeadingFormatter.php
++++ b/src/Plugin/Field/FieldFormatter/HeadingFormatter.php
+@@ -40,11 +40,20 @@ public function viewElements(FieldItemListInterface $items, $langcode) {
+         continue;
+       }
+ 
+-      $element[$delta] = [
+-        '#theme' => 'heading',
+-        '#size' => $item->size,
+-        '#text' => $item->text,
+-      ];
++      if ($item->size == 'sp') {
++        $element[$delta] = [
++          '#theme' => 'heading',
++          '#size' => 'span',
++          '#text' => $item->text,
++        ];
++      }
++      else {
++        $element[$delta] = [
++          '#theme' => 'heading',
++          '#size' => $item->size,
++          '#text' => $item->text,
++        ];
++      }
+     }
+ 
+     return $element;
+diff --git a/src/Plugin/Field/FieldType/HeadingItem.php b/src/Plugin/Field/FieldType/HeadingItem.php
+index d3a88f72..f7ccd030 100644
+--- a/src/Plugin/Field/FieldType/HeadingItem.php
++++ b/src/Plugin/Field/FieldType/HeadingItem.php
+@@ -80,7 +80,7 @@ public function isEmpty() {
+   public static function defaultFieldSettings() {
+     $settings = [
+       'label' => 'Heading',
+-      'allowed_sizes' => ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
++      'allowed_sizes' => ['sp', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
+     ];
+     return $settings + parent::defaultFieldSettings();
+   }
+@@ -126,6 +126,7 @@ public function fieldSettingsForm(array $form, FormStateInterface $form_state) {
+    */
+   protected function getSizes() {
+     return [
++      'sp' => $this->t('None'),
+       'h1' => $this->t('Heading 1'),
+       'h2' => $this->t('Heading 2'),
+       'h3' => $this->t('Heading 3'),
+diff --git a/src/Plugin/Field/FieldWidget/HeadingWidget.php b/src/Plugin/Field/FieldWidget/HeadingWidget.php
+index 019ef3eb..cd2c8cdd 100644
+--- a/src/Plugin/Field/FieldWidget/HeadingWidget.php
++++ b/src/Plugin/Field/FieldWidget/HeadingWidget.php
+@@ -108,6 +108,7 @@ public function massageFormValues(array $values, array $form, FormStateInterface
+   protected function getTypes() {
+     $allowed_sizes = array_filter($this->fieldDefinition->getSetting('allowed_sizes'));
+     $sizes = [
++      'sp' => $this->t('None'),
+       'h1' => $this->t('Heading 1'),
+       'h2' => $this->t('Heading 2'),
+       'h3' => $this->t('Heading 3'),
+diff --git a//templates/heading.html.twig b/templates/heading.html.twig
+index a8677ed9..97471012 100644
+--- a/templates/heading.html.twig
++++ b/templates/heading.html.twig
+@@ -6,10 +6,15 @@
+ * Available variables:
+ * - size : The heading size (h1 - h6).
+ * - text : The text for within the heading.
++* - classes : The classes to be added to the heading size tag.
+ *
+ * @see template_preprocess_heading()
+ *
+ * @ingroup themeable
+ */
+ #}
+-<{{ size }}>{{ text }}</{{ size }}>
++{% if classes %}
++  <{{ size }} class="{{ classes }}">{{ text }}</{{ size }}>
++{% else %}
++  <{{ size }}>{{ text }}</{{ size }}>
++{% endif %}

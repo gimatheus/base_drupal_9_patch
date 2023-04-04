@@ -1,0 +1,32 @@
+name: panopoly-2
+recipe: drupal8
+config:
+  webroot: web
+services:
+  appserver:
+    overrides:
+      environment:
+        PANOPOLY_BEHAT_SCREENSHOT_PATH: '/app/web/sites/default/files/screenshots'
+        PANOPOLY_BEHAT_WINDOW_SIZE: "1920x1080"
+    build:
+      - mkdir -p /app/web/sites/default/files/screenshots
+  chromedriver:
+    type: compose
+    services:
+      image: robcherry/docker-chromedriver:latest
+      volumes:
+        - ./:/app/
+      environment:
+        CHROMEDRIVER_WHITELISTED_IPS: ""
+        CHROMEDRIVER_URL_BASE: "/wd/hub"
+        SCREEN_GEOMETRY: "1920x1080x24"
+      privileged: true
+      security_opt:
+        - seccomp:unconfined
+      command: ["/usr/local/bin/supervisord", "-c", "/etc/supervisord.conf"]
+tooling:
+  behat:
+    service: appserver
+    description: Run behat tests locally.
+    cmd: >-
+      /app/vendor/bin/behat

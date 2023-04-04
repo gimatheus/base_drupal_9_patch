@@ -1,0 +1,43 @@
+diff --git a/src/Plugin/migrate/process/MigrateProcessInlineImages.php b/src/Plugin/migrate/process/MigrateProcessInlineImages.php
+index 1e1aff3..8081de7 100644
+--- a/src/Plugin/migrate/process/MigrateProcessInlineImages.php
++++ b/src/Plugin/migrate/process/MigrateProcessInlineImages.php
+@@ -8,6 +8,7 @@ use Drupal\Core\Plugin\ContainerFactoryPluginInterface;
+ use Drupal\Core\StreamWrapper\StreamWrapperManagerInterface;
+ use Drupal\Core\Url;
+ use Drupal\file\Entity\File;
++use Drupal\media\Entity\Media;
+ use Drupal\migrate\MigrateException;
+ use Drupal\migrate\Plugin\MigrationInterface;
+ use Drupal\migrate\ProcessPluginBase;
+@@ -203,10 +204,28 @@ class MigrateProcessInlineImages extends ProcessPluginBase implements ContainerF
+       throw new MigrateException("{$e->getMessage()} ({$imagePath})");
+     }
+ 
+-    $file = File::create([
++    $file = $this->fileStorage->loadByProperties([
+       'uri' => $final_destination,
+     ]);
+-    $file->save();
++
++    if (!empty($file)) {
++      $file = end($file);
++    }
++    else {
++      $file = File::create([
++        'uri' => $final_destination,
++      ]);
++      $file->save();
++
++      $media = Media::create([
++        'bundle' => 'image',
++        'field_media_image' => [
++          'target_id' => $file->id(),
++        ],
++      ]);
++      $media->setName($this->fileSystem->basename($imagePath))->setPublished(TRUE)->save();
++    }
++
+     return $file;
+   }
+ 

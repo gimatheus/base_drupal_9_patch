@@ -1,0 +1,13 @@
+diff --git a/src/Helper/Settings/TrailingSlashSettingsHelper.php b/src/Helper/Settings/TrailingSlashSettingsHelper.php
+index 705c6a1e..3b6548be 100644
+--- a//Helper/Settings/TrailingSlashSettingsHelper.php
++++ b/src/Helper/Settings/TrailingSlashSettingsHelper.php
+@@ -20,7 +20,7 @@ public static function isEnabled(): bool {
+       $config = \Drupal::config('trailing_slash.settings');
+       $enabled = $config->get('enabled');
+     }
+-    return $enabled;
++    return !is_null($enabled) ? $enabled : false;
+   }
+ 
+   /**

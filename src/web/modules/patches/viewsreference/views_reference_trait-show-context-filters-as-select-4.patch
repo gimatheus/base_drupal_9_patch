@@ -1,0 +1,409 @@
+diff --git a/src/Plugin/Field/FieldWidget/ViewsReferenceTrait.php b/src/Plugin/Field/FieldWidget/ViewsReferenceTrait.php
+index 587dc3cd..003a7b6d 100644
+--- a/src/Plugin/Field/FieldWidget/ViewsReferenceTrait.php
++++ b/src/Plugin/Field/FieldWidget/ViewsReferenceTrait.php
+@@ -140,13 +140,17 @@ public function fieldElement(FieldItemListInterface $items, $delta, array $eleme
+       $field_data = unserialize($field_value['data']);
+     }
+
++    $view_selected_display_js = ['!value' => ''];
++
++    $display_id_name_string = str_replace('target_id', 'display_id', $target_id_name_string);
++
+     $element['options'] = [
+       '#type' => 'details',
+       '#title' => $this->t('Options'),
+       '#weight' => 10,
+       '#states' => [
+         'visible' => [
+-          ':input[name="' . $target_id_name_string . '"]' => $view_selected_js_state,
++          ':input[name="' . $display_id_name_string . '"]' => $view_selected_display_js,
+         ],
+       ],
+     ];
+@@ -160,6 +164,11 @@ public function fieldElement(FieldItemListInterface $items, $delta, array $eleme
+       }
+     }
+
++    // Remove the trail of past arguments if the event is one of change.
++    if ($ajax_event == 'change' && !empty($field_value['options']['argument'])) {
++      $field_value['options']['argument'] = "";
++    }
++
+     $viewsreference_plugin_manager = \Drupal::service('plugin.manager.viewsreference.setting');
+     $plugin_definitions = $viewsreference_plugin_manager->getDefinitions();
+     $enabled_settings = array_filter($this->getFieldSetting('enabled_settings'));
+@@ -169,24 +178,49 @@ public function fieldElement(FieldItemListInterface $items, $delta, array $eleme
+         /** @var \Drupal\viewsreference\Plugin\ViewsReferenceSettingInterface $plugin_instance */
+         $plugin_instance = $viewsreference_plugin_manager->createInstance($plugin_definition['id']);
+
+-        $element['options'][$plugin_definition['id']] = [
+-          '#title' => $plugin_definition['label'],
+-          '#type' => 'textfield',
+-          '#default_value' => isset($field_data[$plugin_definition['id']]) ? $field_data[$plugin_definition['id']] : $plugin_definition['default_value'],
+-          '#states' => [
+-            'visible' => [
+-              ':input[name="' . $target_id_name_string . '"]' => $view_selected_js_state,
++        $addElementToOptions = TRUE;
++        if ($plugin_instance->getPluginId() == 'exposed_filters' && !$this->isExposedFilters($view)) {
++          $addElementToOptions = FALSE;
++        }
++
++        if ($addElementToOptions) {
++
++          $element['options'][$plugin_definition['id']] = [
++            '#title' => $plugin_definition['label'],
++            '#type' => 'textfield',
++            '#default_value' => isset($field_data[$plugin_definition['id']]) ? $field_data[$plugin_definition['id']] : $plugin_definition['default_value'],
++            '#states' => [
++              'visible' => [
++                ':input[name="' . $target_id_name_string . '"]' => $view_selected_js_state,
++              ],
+             ],
+-          ],
+-        ];
++          ];
++
++          $plugin_instance->alterFormField($element['options'][$plugin_definition['id']], $view);
++
++          if ($plugin_definition['id'] == 'argument' && !empty($view)) {
++            $contextualFilters = $this->getContextualFilter($full_view_name, $default_value);
++            if (!empty($contextualFilters)) {
++              $this->createElementContextualFilter($element, $contextualFilters);
++            }
+
+-        $plugin_instance->alterFormField($element['options'][$plugin_definition['id']], $view);
++            // Hiden field argument.
++            $element['options']['argument']['#type'] = 'hidden';
++          }
++        }
+       }
+     }
+
+     if (empty($enabled_settings)) {
+       unset($element['options']);
+     }
++    // Hide options if you don't have context filtering and arguments are enabled.
++    else {
++      if (count($enabled_settings) == 1 &&
++        key_exists('argument', $enabled_settings) && empty($contextualFilters)) {
++        unset($element['options']);
++      }
++    }
+
+     $element['#attached']['library'][] = 'viewsreference/viewsreference';
+     $element['#after_build'][] = [$class, 'itemResetValues'];
+@@ -326,12 +360,17 @@ protected function getAllViewsDisplayIds() {
+   protected function getViewDisplays($view_id) {
+     $options = [];
+     $view_plugins = array_diff($this->getFieldSetting('plugin_types'), ['0']);
++    $bundle = $this->fieldDefinition->get('bundle');
+     /** @var \Drupal\views\Entity\View $view */
+-    if ($view = \Drupal::service('entity.manager')->getStorage('view')->load($view_id)) {
++    if ($view = \Drupal::service('entity.manager')
++      ->getStorage('view')
++      ->load($view_id)) {
+       if ($displays = $view->get('display')) {
+         foreach ($displays as $display) {
+           if (in_array($display['display_plugin'], $view_plugins, TRUE)) {
+-            $options[$display['id']] = $display['display_title'];
++            if (strpos($display['id'], $bundle) !== FALSE) {
++              $options[$display['id']] = $display['display_title'];
++            }
+           }
+         }
+       }
+@@ -385,6 +424,12 @@ public function massageFormValues(array $values, array $form, FormStateInterface
+         unset($value['options']);
+       }
+     }
++
++    // Alter argument with contextual filter.
++    if (isset($values[0]['options']) && count($values[0]['options']) > 1) {
++      $values = $this->addFilterToArgument($values);
++    }
++
+     // Serialize settings to store them in the data attribute.
+     $values = $this->serializeSettingsValues($values);
+     return $values;
+@@ -413,4 +458,199 @@ protected function serializeSettingsValues(array $values) {
+     return $values;
+   }
+
++  /**
++   * Get contextual filter for a particular view display.
++   *
++   * @param $view_id
++   *   The view ID.
++   *
++   * @param $displaySelect
++   *
++   * @return array
++   */
++  protected function getContextualFilter($view_id, $displaySelect) {
++    $filters = [];
++    $view_plugins = array_diff($this->getFieldSetting('plugin_types'), ['0']);
++    /** @var \Drupal\views\Entity\View $view */
++    if (!empty($view_id) && !empty($displaySelect)) {
++      if ($view = \Drupal::service('entity.manager')
++        ->getStorage('view')
++        ->load($view_id)) {
++        if ($displays = $view->get('display')) {
++          foreach ($displays as $display) {
++            if (in_array($display['display_plugin'], $view_plugins, TRUE) &&
++              $display['id'] == $displaySelect && key_exists('arguments', $display['display_options'])) {
++              foreach ($display['display_options']['arguments'] as $argument) {
++                $filters[$argument['id']] = $argument;
++              }
++            }
++          }
++        }
++      }
++    }
++    return $filters;
++  }
++
++  /**
++   * Create new Elements with Contextual Filter.
++   *
++   * @param $element
++   * @param $contextualFilters
++   *
++   * @throws \Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException
++   * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
++   */
++  protected function createElementContextualFilter(&$element, $contextualFilters) {
++
++    $nameTaxonomies = ['program_area', 'program_type_categories', 'knowledge_areas'];
++
++    $valueArgument = [];
++
++    if (!empty($element['options']['argument']['#default_value'])) {
++      $valueArgument = explode("/", $element['options']['argument']['#default_value']);
++    }
++
++    $indexArgument = 0;
++    foreach ($contextualFilters as $filter) {
++      $type = explode(":", $filter['validate']['type']);
++      $bundle = array_keys($filter['validate_options']['bundles']);
++
++      $options = [
++        0 => '- Select -',
++      ];
++
++      switch ($type[1]) {
++        case 'taxonomy_term':
++          $terms = \Drupal::entityTypeManager()
++            ->getStorage('taxonomy_term')
++            ->loadByProperties([
++              'vid' => $bundle[0],
++            ]);
++
++          foreach ($terms as $key => $value) {
++            $options[$key] = $value->getName();
++          }
++
++          break;
++      }
++
++      $title = ucfirst(str_replace("_", " ", $bundle[0]));
++
++      if (key_exists($indexArgument, $valueArgument) && $valueArgument[$indexArgument] == 'Array') {
++        $valueArgument[$indexArgument] = "";
++      }
++      else {
++        if (!key_exists($indexArgument, $valueArgument)) {
++          $valueArgument[$indexArgument] = 0;
++        }
++      }
++
++      $typeElement = 'select';
++
++      if (in_array($bundle[0], $nameTaxonomies)) {
++        $typeElement = 'checkboxes';
++        unset($options[0]);
++        $valueArgument[$indexArgument] = explode("+", $valueArgument[$indexArgument]);
++        $arrayValuesCheckboxes = [];
++        foreach ($valueArgument[$indexArgument] as $key => $value) {
++          if ($value != 0) {
++            $arrayValuesCheckboxes[$value] = $value;
++          }
++        }
++        $valueArgument[$indexArgument] = $arrayValuesCheckboxes;
++      }
++
++      $element['options'][$bundle[0]] = [
++        '#title' => t($title),
++        '#type' => $typeElement,
++        '#options' => $options,
++        '#default_value' => !empty($valueArgument) ? $valueArgument[$indexArgument] : 0,
++      ];
++
++      $indexArgument++;
++    }
++
++  }
++
++  /**
++   * Set argument with contextual filter.
++   *
++   * @param array $values
++   *
++   * @return array
++   */
++  protected function addFilterToArgument(array $values) {
++
++    $argument = "";
++
++    $viewFilter = [
++      'exposed_filters',
++      'title',
++      'offset',
++      'limit',
++      'argument',
++      'pager',
++    ];
++
++    foreach ($values[0]['options'] as $key => $value) {
++      if (!in_array($key, $viewFilter)) {
++        if (!empty($argument)) {
++          if (!is_array($value) && $value != 0) {
++            $argument .= "/";
++          }
++          else {
++            if (is_array($value) && count($value) > 0) {
++              $argument .= "/";
++            }
++          }
++        }
++
++        if (!is_array($value) && $value != 0) {
++          $argument .= strval($value);
++        }
++        else {
++          if (is_array($value)) {
++            $separator = count($value) - 1;
++            foreach ($value as $arrayValue) {
++              $argument .= strval($arrayValue);
++              if ($separator > 0) {
++                $argument .= "+";
++                $separator--;
++              }
++            }
++          }
++        }
++      }
++    }
++
++    $values[0]['argument'] = $argument;
++
++    return $values;
++  }
++
++
++  /**
++   * Check if it is an exposed filter.
++   *
++   * @param $view
++   *
++   * @return bool
++   */
++  protected function isExposedFilters($view) {
++    $filterExposed = FALSE;
++    if (!empty($view)) {
++      foreach ($view->display_handler->handlers as $type => $value) {
++        /** @var \Drupal\views\Plugin\views\ViewsHandlerInterface $handler */
++        foreach ($view->$type as $id => $handler) {
++          if ($handler->canExpose() && $handler->isExposed()) {
++            $filterExposed = TRUE;
++            break;
++          }
++        }
++      }
++    }
++
++    return $filterExposed;
++  }
++
+ }
+diff --git a/src/Plugin/ViewsReferenceSetting/ViewsReferenceExposedFilters.php b/src/Plugin/ViewsReferenceSetting/ViewsReferenceExposedFilters.php
+index 09a07698..4ab2ef53 100644
+--- a/src/Plugin/ViewsReferenceSetting/ViewsReferenceExposedFilters.php
++++ b/src/Plugin/ViewsReferenceSetting/ViewsReferenceExposedFilters.php
+@@ -55,39 +55,50 @@ public function alterFormField(&$form_field, ViewExecutable $view = NULL) {
+     // @see ViewExposedForm::buildForm()
+     $form_state->set('exposed', TRUE);
+
+-    // Remember filters IDs and names.
+-    $vrExposedFiltersAlias = [];
+-    // Go through each handler and let it generate its exposed widget.
+-    // @see ViewExposedForm::buildForm()
+-    foreach ($view->display_handler->handlers as $type => $value) {
+-      /** @var \Drupal\views\Plugin\views\ViewsHandlerInterface $handler */
+-      foreach ($view->$type as $id => $handler) {
+-        if ($handler->canExpose() && $handler->isExposed()) {
+-          $handler->buildExposedForm($form_field, $form_state);
+-
+-          if ($info = $handler->exposedInfo()) {
+-            if (isset($form_field[$info['value']])) {
+-              // @todo: We need to verify when views use the alias or the ID,
+-              // I need sometimes the ID how key and others the alias.
+-              $vrExposedFiltersAlias[$id] = $info['value'];
+-              $vrExposedFiltersAlias[$info['value']] = $id;
+-              // Method buildExposedForm() gets rid of element titles, unless
+-              // type is 'checkbox'. So restore it if missing.
+-              if (empty($form_field[$info['value']]['#title'])) {
+-                $form_field[$info['value']]['#title'] = $this->t('@label', ['@label' => $info['label']]);
+-              }
++    // Hides the exposed filter options from view in the configuration form.
++    $showOptionsExposedFilters = FALSE;
++
++    if (strpos($view->current_display, 'general_list') !== FALSE) {
++      $showOptionsExposedFilters = TRUE;
++    }
++
++    // When there is a context filter I don't show the exposed filters.
++    if (count($view->argument) == 0 && $showOptionsExposedFilters) {
++      // Remember filters IDs and names.
++      $vrExposedFiltersAlias = [];
++      // Go through each handler and let it generate its exposed widget.
++      // @see ViewExposedForm::buildForm()
++      foreach ($view->display_handler->handlers as $type => $value) {
++        /** @var \Drupal\views\Plugin\views\ViewsHandlerInterface $handler */
++        foreach ($view->$type as $id => $handler) {
++          if ($handler->canExpose() && $handler->isExposed()) {
++            $handler->buildExposedForm($form_field, $form_state);
+
+-              // Manually set default values, until we don't handle these
+-              // properly from form_state.
+-              // @todo: use (Sub)FormState to handle default_value.
+-              if (isset($current_values[$info['value']])) {
+-                $form_field[$info['value']]['#default_value'] = $current_values[$info['value']];
++            if ($info = $handler->exposedInfo()) {
++              if (isset($form_field[$info['value']])) {
++                // @todo: We need to verify when views use the alias or the ID,
++                // I need sometimes the ID how key and others the alias.
++                $vrExposedFiltersAlias[$id] = $info['value'];
++                $vrExposedFiltersAlias[$info['value']] = $id;
++                // Method buildExposedForm() gets rid of element titles, unless
++                // type is 'checkbox'. So restore it if missing.
++                if (empty($form_field[$info['value']]['#title'])) {
++                  $form_field[$info['value']]['#title'] = $this->t('@label', ['@label' => $info['label']]);
++                }
++
++                // Manually set default values, until we don't handle these
++                // properly from form_state.
++                // @todo: use (Sub)FormState to handle default_value.
++                if (isset($current_values[$info['value']])) {
++                  $form_field[$info['value']]['#default_value'] = $current_values[$info['value']];
++                }
+               }
+             }
+           }
+         }
+       }
+     }
++
+     // Set filters alias paths.
+     $form_field['vr_exposed_filters_alias'] = [
+       '#type' => 'hidden',
